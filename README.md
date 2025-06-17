@@ -20,7 +20,7 @@ A Python-based system to manage books, borrowers, and library transactions. Desi
 
 ## Setup
 1. Install dependencies
-2. Set up MySQL database (import schema if provided)
+2. Set up MySQL database 
 3. Run `project.py` to launch
 
 ## License
