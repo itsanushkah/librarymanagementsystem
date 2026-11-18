@@ -1,0 +1,30 @@
+# One-click deploy on Render: New > Blueprint > pick this repo.
+databases:
+  - name: library-db
+    plan: free
+    databaseName: library
+    user: library
+
+services:
+  - type: web
+    name: shelfwise-library
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn --preload --workers 2 --bind 0.0.0.0:$PORT app:app
+    healthCheckPath: /healthz
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.7
+      - key: DATABASE_URL
+        fromDatabase:
+          name: library-db
+          property: connectionString
+      - key: SECRET_KEY
+        generateValue: true
+      - key: LMS_ADMIN_USERNAME
+        value: admin
+      - key: LMS_ADMIN_PASSWORD
+        sync: false   # Render asks you for this when you create the Blueprint
+      - key: LMS_SEED_DEMO_DATA
+        value: "1"

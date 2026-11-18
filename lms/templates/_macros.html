@@ -1,0 +1,40 @@
+{% macro cover(book, cls="") -%}
+{%- set colors = ["#2f5d50", "#7a3e48", "#3d4f7c", "#8a5a2b", "#4b6b3a", "#5b4a7a", "#2c6a73", "#7a5c1e"] -%}
+<div class="cover {{ cls }}" style="--c: {{ colors[book.id % 8] }}">
+  <div class="ph"><span class="t">{{ book.title }}</span><span class="a">{{ book.author }}</span></div>
+  <img src="https://covers.openlibrary.org/b/isbn/{{ book.isbn }}-M.jpg?default=false"
+       alt="Cover of {{ book.title }}" loading="lazy" onerror="this.remove()">
+</div>
+{%- endmacro %}
+
+{% macro status(loan) -%}
+{%- if loan.status == "overdue" -%}<span class="badge badge-danger">Overdue {{ loan.days_overdue }}d</span>
+{%- elif loan.status == "due soon" -%}<span class="badge badge-warn">Due soon</span>
+{%- elif loan.status == "returned" -%}<span class="badge badge-muted">Returned</span>
+{%- else -%}<span class="badge badge-ok">On loan</span>{%- endif -%}
+{%- endmacro %}
+
+{% macro availability(book) -%}
+{%- if book.available_copies > 0 -%}
+<span class="badge badge-ok">{{ book.available_copies }} of {{ book.total_copies }} available</span>
+{%- else -%}<span class="badge badge-danger">All {{ book.total_copies }} on loan</span>{%- endif -%}
+{%- endmacro %}
+
+{% macro loan_actions(loan, back) -%}
+{%- if loan.status != "returned" -%}
+<div class="actions">
+  <form method="post" action="{{ url_for('loan_return', loan_id=loan.id) }}" class="inline">
+    <input type="hidden" name="csrf" value="{{ csrf_token() }}"><input type="hidden" name="back" value="{{ back }}">
+    <button class="btn btn-sm btn-primary">Return</button>
+  </form>
+  {%- if loan.status != "overdue" %}
+  <form method="post" action="{{ url_for('loan_renew', loan_id=loan.id) }}" class="inline">
+    <input type="hidden" name="csrf" value="{{ csrf_token() }}"><input type="hidden" name="back" value="{{ back }}">
+    <button class="btn btn-sm">Renew</button>
+  </form>
+  {%- endif %}
+</div>
+{%- endif -%}
+{%- endmacro %}
+
+{% macro date(d) %}{{ d.strftime("%d %b %Y") if d else "" }}{% endmacro %}

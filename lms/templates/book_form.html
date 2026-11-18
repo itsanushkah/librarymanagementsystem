@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}{{ "Add book" if new else "Edit book" }}{% endblock %}
+{% block content %}
+<p><a href="{{ url_for('books') if new else url_for('book_detail', book_id=book.id) }}">← Back</a></p>
+<div class="page-head"><div><h1>{{ "Add a book" if new else "Edit book" }}</h1>
+  {% if new %}<p>Type an ISBN and press Look up to fill in the rest from Open Library.</p>{% endif %}</div></div>
+<form method="post" class="card card-pad form">
+  <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+  <div class="field">
+    <label for="isbn">ISBN</label>
+    <div class="input-group">
+      <input id="isbn" name="isbn" value="{{ book.isbn or '' }}" required placeholder="e.g. 9780547928227">
+      <button type="button" class="btn" id="lookup">Look up</button>
+    </div>
+    <span class="hint" id="lookup-msg"></span>
+  </div>
+  <div class="field"><label for="title">Title</label><input id="title" name="title" value="{{ book.title or '' }}" required></div>
+  <div class="field"><label for="author">Author</label><input id="author" name="author" value="{{ book.author or '' }}" required></div>
+  <div class="row">
+    <div class="field"><label for="genre">Genre</label><input id="genre" name="genre" value="{{ book.genre or '' }}"></div>
+    <div class="field"><label for="published_year">Year published</label>
+      <input id="published_year" name="published_year" type="number" min="0" max="2100" value="{{ book.published_year or '' }}"></div>
+  </div>
+  {% if new %}
+  <div class="field"><label for="copies">Number of copies</label>
+    <input id="copies" name="copies" type="number" min="1" value="{{ book.copies or 1 }}" style="max-width:140px"></div>
+  {% endif %}
+  <button class="btn btn-primary">{{ "Add to catalogue" if new else "Save changes" }}</button>
+</form>
+<script>
+document.getElementById("lookup").addEventListener("click", async () => {
+  const isbn = document.getElementById("isbn").value.trim();
+  const msg = document.getElementById("lookup-msg");
+  if (!isbn) { msg.textContent = "Enter an ISBN first."; return; }
+  msg.textContent = "Looking up…";
+  try {
+    const res = await fetch("{{ url_for('isbn_lookup', isbn='0')[:-1] }}" + encodeURIComponent(isbn));
+    const data = await res.json();
+    if (!res.ok) { msg.textContent = data.error; return; }
+    for (const key of ["title", "author", "genre", "published_year"]) {
+      const el = document.getElementById(key);
+      if (data[key] && !el.value) el.value = data[key];
+    }
+    msg.textContent = "Filled in from Open Library. Check the details before saving.";
+  } catch (e) { msg.textContent = "Lookup failed. You can type the details in."; }
+});
+</script>
+{% endblock %}

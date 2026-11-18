@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% from "_macros.html" import status, date, loan_actions with context %}
+{% block title %}Loans{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Loans</h1></div>
+  <a class="btn btn-primary" href="{{ url_for('loan_issue') }}">Issue a book</a>
+</div>
+<nav class="tabs">
+  {% for key, label in [("active", "On loan"), ("overdue", "Overdue"), ("returned", "Returned"), ("all", "All")] %}
+  <a href="{{ url_for('loans', status=key, q=q or None) }}" class="{{ 'active' if current == key }}">{{ label }}</a>
+  {% endfor %}
+</nav>
+<form class="toolbar" method="get">
+  <input type="hidden" name="status" value="{{ current }}">
+  <input type="search" name="q" value="{{ q }}" placeholder="Search by book or member" aria-label="Search">
+  <button class="btn">Search</button>
+</form>
+<section class="card">
+  {% if loans %}
+  <div class="table-wrap"><table>
+    <tr><th>Book</th><th>Member</th><th>Issued</th><th>Due</th><th>Returned</th><th>Fine</th><th>Status</th><th></th></tr>
+    {% for l in loans %}
+    <tr>
+      <td><a href="{{ url_for('book_detail', book_id=l.book_id) }}">{{ l.title }}</a></td>
+      <td><a href="{{ url_for('member_detail', member_id=l.member_id) }}">{{ l.member_name }}</a></td>
+      <td class="date">{{ date(l.issued_on) }}</td><td class="date">{{ date(l.due_on) }}</td><td class="date">{{ date(l.returned_on) }}</td>
+      <td class="num">{% if l.fine %}{{ "%.2f"|format(l.fine) }}{% elif l.fine_so_far %}<span class="sub">{{ "%.2f"|format(l.fine_so_far) }} so far</span>{% endif %}</td>
+      <td>{{ status(l) }}</td>
+      <td>{{ loan_actions(l, request.full_path) }}</td>
+    </tr>
+    {% endfor %}
+  </table></div>
+  {% else %}<div class="empty">No loans here.</div>{% endif %}
+</section>
+{% endblock %}

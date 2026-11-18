@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Issue a book{% endblock %}
+{% block content %}
+<p><a href="{{ url_for('loans') }}">← Loans</a></p>
+<div class="page-head"><div><h1>Issue a book</h1><p>The loan is due back in {{ loan_days }} days.</p></div></div>
+<form method="post" class="card card-pad form">
+  <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+  <div class="field"><label for="book_id">Book</label>
+    <select id="book_id" name="book_id" required>
+      <option value="">Choose an available book…</option>
+      {% for b in books %}<option value="{{ b.id }}" {{ "selected" if b.id == book_id }}>{{ b.title }} by {{ b.author }} ({{ b.available_copies }} left)</option>{% endfor %}
+    </select></div>
+  <div class="field"><label for="member_id">Member</label>
+    <select id="member_id" name="member_id" required>
+      <option value="">Choose a member…</option>
+      {% for m in members %}<option value="{{ m.id }}" {{ "selected" if m.id == member_id }}>{{ m.name }} ({{ m.email }})</option>{% endfor %}
+    </select></div>
+  <button class="btn btn-primary">Issue book</button>
+</form>
+{% endblock %}

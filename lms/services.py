@@ -259,3 +259,65 @@ class Library:
             "FROM books b JOIN loans l ON l.book_id = b.id "
             "GROUP BY b.id, b.title, b.author ORDER BY times_borrowed DESC, b.title "
             "LIMIT ?", (limit,))
+
+    # -- web helpers -----------------------------------------------------
+    def list_loans(self, status="active", today=None, term=""):
+        """status: active | overdue | returned | all"""
+        today = today or date.today()
+        sql = ("SELECT l.*, b.title, b.isbn, m.name AS member_name FROM loans l "
+               "JOIN books b ON b.id = l.book_id JOIN members m ON m.id = l.member_id "
+               "WHERE (LOWER(b.title) LIKE ? OR LOWER(m.name) LIKE ?)")
+        like = f"%{term.lower()}%"
+        params = [like, like]
+        if status == "active":
+            sql += " AND l.returned_on IS NULL"
+        elif status == "overdue":
+            sql += " AND l.returned_on IS NULL AND l.due_on < ?"
+            params.append(today.isoformat())
+        elif status == "returned":
+            sql += " AND l.returned_on IS NOT NULL"
+        sql += " ORDER BY l.returned_on IS NOT NULL, l.due_on, l.id DESC"
+        rows = [_normalize_loan(r) for r in self.db.query(sql, params)]
+        for r in rows:
+            self._annotate(r, today)
+        return rows
+
+    def _annotate(self, loan, today):
+        """Add a human status ("overdue", "due soon", "on loan", "returned")."""
+        if loan["returned_on"]:
+            loan["status"] = "returned"
+        elif loan["due_on"] < today:
+            loan["status"] = "overdue"
+            loan["days_overdue"] = (today - loan["due_on"]).days
+            loan["fine_so_far"] = self.calculate_fine(loan["due_on"], today)
+        elif (loan["due_on"] - today).days <= 3:
+            loan["status"] = "due soon"
+        else:
+            loan["status"] = "on loan"
+        return loan
+
+    def book_history(self, book_id, today=None):
+        today = today or date.today()
+        self.get_book(book_id)
+        rows = [_normalize_loan(r) for r in self.db.query(
+            "SELECT l.*, m.name AS member_name FROM loans l "
+            "JOIN members m ON m.id = l.member_id WHERE l.book_id = ? "
+            "ORDER BY l.issued_on DESC, l.id DESC", (book_id,))]
+        return [self._annotate(r, today) for r in rows]
+
+    def member_loans(self, member_id, today=None):
+        today = today or date.today()
+        return [self._annotate(r, today) for r in self.member_history(member_id)]
+
+    def due_soon(self, today=None, days=3):
+        today = today or date.today()
+        return [r for r in self.list_loans("active", today=today)
+                if r["status"] == "due soon"]
+
+    def genres(self):
+        return [r["genre"] for r in self.db.query(
+            "SELECT DISTINCT genre FROM books WHERE genre IS NOT NULL AND genre <> '' "
+            "ORDER BY genre")]
+
+    def books_by_genre(self, genre):
+        return self.db.query("SELECT * FROM books WHERE genre = ? ORDER BY title", (genre,))

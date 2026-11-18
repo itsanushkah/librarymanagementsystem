@@ -13,11 +13,14 @@ TODAY = date(2026, 1, 10)
 @pytest.fixture
 def lib():
     backend = os.getenv("LMS_TEST_BACKEND", "sqlite")
-    db = Database(backend=backend, sqlite_path=":memory:")
-    if backend == "mysql":
+    db = Database(backend=backend, sqlite_path=":memory:",
+                  database_url=os.getenv("LMS_TEST_DATABASE_URL"))
+    if backend in ("mysql", "postgres"):
         cur = db.conn.cursor()
         for t in ("loans", "members", "books"):
             cur.execute(f"DELETE FROM {t}")
+        if backend == "postgres":
+            cur.execute("TRUNCATE loans, members, books RESTART IDENTITY")
         db.conn.commit()
     yield Library(db, loan_days=14, max_active_loans=2, fine_per_day=5)
     db.close()

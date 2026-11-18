@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% from "_macros.html" import cover, availability, status, date, loan_actions with context %}
+{% block title %}{{ book.title }}{% endblock %}
+{% block content %}
+<p><a href="{{ url_for('books') }}">← Catalogue</a></p>
+<div class="detail">
+  {{ cover(book, "cover-lg") }}
+  <div>
+    <h1>{{ book.title }}</h1>
+    <p class="sub" style="font-size:1.05rem;margin:4px 0 0">by {{ book.author }}</p>
+    <div class="avail">{{ availability(book) }}</div>
+    <dl class="meta">
+      <dt>ISBN</dt><dd>{{ book.isbn }}</dd>
+      {% if book.genre %}<dt>Genre</dt><dd><a href="{{ url_for('books', genre=book.genre) }}">{{ book.genre }}</a></dd>{% endif %}
+      {% if book.published_year %}<dt>Published</dt><dd>{{ book.published_year }}</dd>{% endif %}
+    </dl>
+
+    {% if is_librarian %}
+    <div class="card card-pad" style="margin-bottom:20px">
+      <h2>Issue this book</h2>
+      {% if book.available_copies > 0 and members %}
+      <form method="post" action="{{ url_for('loan_issue') }}" class="input-group">
+        <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+        <input type="hidden" name="book_id" value="{{ book.id }}">
+        <input type="hidden" name="back" value="{{ url_for('book_detail', book_id=book.id) }}">
+        <select name="member_id" required aria-label="Member" style="flex:1">
+          <option value="">Choose a member…</option>
+          {% for m in members %}<option value="{{ m.id }}">{{ m.name }} ({{ m.email }})</option>{% endfor %}
+        </select>
+        <button class="btn btn-primary">Issue</button>
+      </form>
+      {% elif not members %}<p class="sub">Register a member first.</p>
+      {% else %}<p class="sub">All copies are on loan right now.</p>{% endif %}
+    </div>
+
+    <div class="actions">
+      <a class="btn" href="{{ url_for('book_edit', book_id=book.id) }}">Edit details</a>
+      <form method="post" action="{{ url_for('book_copies', book_id=book.id) }}" class="inline">
+        <input type="hidden" name="csrf" value="{{ csrf_token() }}"><input type="hidden" name="delta" value="1">
+        <button class="btn">+ Add a copy</button>
+      </form>
+      {% if book.available_copies > 0 %}
+      <form method="post" action="{{ url_for('book_copies', book_id=book.id) }}" class="inline">
+        <input type="hidden" name="csrf" value="{{ csrf_token() }}"><input type="hidden" name="delta" value="-1">
+        <button class="btn">− Remove a copy</button>
+      </form>
+      {% endif %}
+      {% if not history %}
+      <form method="post" action="{{ url_for('book_delete', book_id=book.id) }}" class="inline"
+            onsubmit="return confirm('Delete this book from the catalogue?')">
+        <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+        <button class="btn btn-danger">Delete</button>
+      </form>
+      {% endif %}
+    </div>
+    {% elif book.available_copies > 0 %}
+    <p class="sub">Visit the library desk to borrow this book.</p>
+    {% endif %}
+  </div>
+</div>
+
+{% if is_librarian %}
+<section class="card" style="margin-top:32px">
+  <div class="card-head"><h2>Loan history</h2></div>
+  {% if history %}
+  <div class="table-wrap"><table>
+    <tr><th>Member</th><th>Issued</th><th>Due</th><th>Returned</th><th>Fine</th><th>Status</th><th></th></tr>
+    {% for l in history %}
+    <tr>
+      <td><a href="{{ url_for('member_detail', member_id=l.member_id) }}">{{ l.member_name }}</a></td>
+      <td class="date">{{ date(l.issued_on) }}</td><td class="date">{{ date(l.due_on) }}</td><td class="date">{{ date(l.returned_on) }}</td>
+      <td class="num">{{ "%.2f"|format(l.fine) if l.fine else "" }}</td>
+      <td>{{ status(l) }}</td>
+      <td>{{ loan_actions(l, url_for('book_detail', book_id=book.id)) }}</td>
+    </tr>
+    {% endfor %}
+  </table></div>
+  {% else %}<div class="empty">This book hasn't been borrowed yet.</div>{% endif %}
+</section>
+{% endif %}
+{% endblock %}

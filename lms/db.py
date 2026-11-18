@@ -1,7 +1,7 @@
-"""Database access layer supporting MySQL and SQLite.
+"""Database access layer supporting MySQL, PostgreSQL and SQLite.
 
 All SQL in the app is written with ``?`` placeholders; for MySQL they are
-translated to ``%s`` before execution.
+translated to ``%s`` before execution on MySQL and PostgreSQL.
 """
 import sqlite3
 from contextlib import contextmanager
@@ -40,6 +40,39 @@ SCHEMA = {
         )""",
         "CREATE INDEX IF NOT EXISTS idx_loans_member ON loans(member_id)",
         "CREATE INDEX IF NOT EXISTS idx_loans_book ON loans(book_id)",
+    ],
+    "postgres": [
+        """CREATE TABLE IF NOT EXISTS books (
+            id SERIAL PRIMARY KEY,
+            isbn VARCHAR(20) NOT NULL UNIQUE,
+            title VARCHAR(255) NOT NULL,
+            author VARCHAR(255) NOT NULL,
+            genre VARCHAR(100),
+            published_year INTEGER,
+            total_copies INTEGER NOT NULL DEFAULT 1 CHECK (total_copies >= 0),
+            available_copies INTEGER NOT NULL DEFAULT 1 CHECK (available_copies >= 0),
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )""",
+        """CREATE TABLE IF NOT EXISTS members (
+            id SERIAL PRIMARY KEY,
+            name VARCHAR(255) NOT NULL,
+            email VARCHAR(255) NOT NULL UNIQUE,
+            phone VARCHAR(30),
+            joined_on DATE NOT NULL,
+            active INTEGER NOT NULL DEFAULT 1
+        )""",
+        """CREATE TABLE IF NOT EXISTS loans (
+            id SERIAL PRIMARY KEY,
+            book_id INTEGER NOT NULL REFERENCES books(id),
+            member_id INTEGER NOT NULL REFERENCES members(id),
+            issued_on DATE NOT NULL,
+            due_on DATE NOT NULL,
+            returned_on DATE,
+            fine NUMERIC(10, 2) NOT NULL DEFAULT 0
+        )""",
+        "CREATE INDEX IF NOT EXISTS idx_loans_member ON loans(member_id)",
+        "CREATE INDEX IF NOT EXISTS idx_loans_book ON loans(book_id)",
+        "CREATE INDEX IF NOT EXISTS idx_books_title ON books(title)",
     ],
     "mysql": [
         """CREATE TABLE IF NOT EXISTS books (
@@ -85,9 +118,23 @@ class IntegrityError(Exception):
 
 
 class Database:
-    def __init__(self, backend=None, sqlite_path=None, mysql_settings=None):
+    def __init__(self, backend=None, sqlite_path=None, mysql_settings=None,
+                 database_url=None):
+        database_url = database_url or (config.DATABASE_URL if backend is None else None)
+        if database_url and database_url.startswith(("postgres://", "postgresql://")):
+            backend = "postgres"
         self.backend = (backend or config.DB_BACKEND).lower()
-        if self.backend == "sqlite":
+        if self.backend == "postgres":
+            try:
+                import psycopg
+                from psycopg.rows import dict_row
+            except ImportError as exc:  # pragma: no cover
+                raise RuntimeError("psycopg is not installed. "
+                                   "Run: pip install -r requirements.txt") from exc
+            self.conn = psycopg.connect(database_url or config.DATABASE_URL,
+                                        row_factory=dict_row)
+            self._integrity_errors = (psycopg.IntegrityError,)
+        elif self.backend == "sqlite":
             self.conn = sqlite3.connect(sqlite_path or config.SQLITE_PATH)
             self.conn.row_factory = sqlite3.Row
             self.conn.execute("PRAGMA foreign_keys = ON")
@@ -115,11 +162,13 @@ class Database:
 
     # -- helpers ---------------------------------------------------------
     def _sql(self, query):
-        return query.replace("?", "%s") if self.backend == "mysql" else query
+        return query if self.backend == "sqlite" else query.replace("?", "%s")
 
     def _cursor(self):
         if self.backend == "mysql":
             return self.conn.cursor(dictionary=True)
+        if self.backend == "postgres":
+            return self.conn.cursor()
         return self.conn.cursor()
 
     def init_schema(self):
@@ -143,11 +192,14 @@ class Database:
     def execute(self, sql, params=()):
         """Run a write statement and return the last inserted id."""
         cur = self._cursor()
+        returning = self.backend == "postgres" and sql.lstrip().upper().startswith("INSERT")
+        if returning:
+            sql += " RETURNING id"
         try:
             cur.execute(self._sql(sql), params)
         except self._integrity_errors as exc:
             raise IntegrityError(str(exc)) from exc
-        last_id = cur.lastrowid
+        last_id = cur.fetchone()["id"] if returning else getattr(cur, "lastrowid", None)
         cur.close()
         return last_id
 

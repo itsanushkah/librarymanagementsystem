@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Members{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Members</h1><p>{{ members|length }} member{{ "" if members|length == 1 else "s" }}</p></div>
+  <a class="btn btn-primary" href="{{ url_for('member_new') }}">Register member</a>
+</div>
+<form class="toolbar" method="get">
+  <input type="search" name="q" value="{{ q }}" placeholder="Search by name or email" aria-label="Search">
+  <button class="btn">Search</button>
+  {% if q %}<a href="{{ url_for('members') }}" class="sub">Clear</a>{% endif %}
+</form>
+<section class="card">
+  {% if members %}
+  <div class="table-wrap"><table>
+    <tr><th>Name</th><th>Email</th><th>Phone</th><th>Books out</th><th>Status</th></tr>
+    {% for m in members %}
+    <tr>
+      <td><a href="{{ url_for('member_detail', member_id=m.id) }}"><strong>{{ m.name }}</strong></a></td>
+      <td>{{ m.email }}</td><td>{{ m.phone or "" }}</td><td class="num">{{ m.on_loan }}</td>
+      <td>{% if m.active %}<span class="badge badge-ok">Active</span>{% else %}<span class="badge badge-muted">Inactive</span>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </table></div>
+  {% else %}<div class="empty">No members found.</div>{% endif %}
+</section>
+{% endblock %}
