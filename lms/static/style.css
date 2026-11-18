@@ -172,3 +172,7 @@ input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1
 }
 td.date { white-space: nowrap; }
 td .actions { flex-wrap: nowrap; }
+.pager { display: flex; justify-content: center; align-items: center; gap: 16px; margin-top: 28px; }
+a.card.stat:hover { border-color: var(--accent); }
+code { background: var(--surface-2); padding: 1px 5px; border-radius: 4px; font-size: .9em; }
+main, .grid > *, .detail > * { min-width: 0; }

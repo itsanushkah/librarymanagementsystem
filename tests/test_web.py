@@ -63,7 +63,8 @@ def test_dashboard_and_pages_render(client):
     assert "Dashboard" in login(client).get_data(as_text=True)
     for url in ["/", "/members", "/members/1", "/loans", "/loans?status=overdue",
                 "/loans?status=returned", "/loans?status=all", "/loans/issue",
-                "/books/new", "/books/1/edit", "/books/2", "/healthz"]:
+                "/books/new", "/books/1/edit", "/books/2", "/healthz", "/reservations",
+                "/fines", "/members/1/edit", "/books/6", "/books?page=2"]:
         assert client.get(url).status_code == 200, url
 
 
@@ -97,3 +98,69 @@ def test_open_redirect_blocked(client):
     token = csrf(client)
     r = client.post("/loans/2/renew", data={"csrf": token, "back": "//evil.com"})
     assert r.headers["Location"] == "/loans"
+
+
+def test_404_page(client):
+    r = client.get("/no-such-page")
+    assert r.status_code == 404 and "couldn" in r.get_data(as_text=True)
+
+
+def test_security_headers(client):
+    r = client.get("/books")
+    assert r.headers["X-Frame-Options"] == "DENY"
+    assert r.headers["X-Content-Type-Options"] == "nosniff"
+
+
+def test_login_lockout(client, monkeypatch):
+    monkeypatch.setattr(config, "LOGIN_MAX_ATTEMPTS", 3)
+    token = csrf(client, "/login")
+    for _ in range(3):
+        client.post("/login", data={"csrf": token, "username": "admin", "password": "x"})
+    r = client.post("/login", data={"csrf": token, "username": "admin", "password": "secret"})
+    assert r.status_code == 429
+
+
+def test_weak_password_blocked_in_production(client, monkeypatch):
+    monkeypatch.setattr(config, "IS_PRODUCTION", True)
+    monkeypatch.setattr(config, "ADMIN_PASSWORD", "admin")
+    token = csrf(client, "/login")
+    r = client.post("/login", data={"csrf": token, "username": "admin", "password": "admin"})
+    assert r.status_code == 403
+
+
+def test_reserve_pay_edit_and_export(client):
+    login(client)
+    token = csrf(client)
+    # Clean Code (book 6) has its only copy out and a waiting list in the demo data
+    html = client.get("/books/6").get_data(as_text=True)
+    assert "in line" in html and "Reserve" in html
+    r = client.post("/reservations", data={"csrf": token, "book_id": 6, "member_id": 1,
+                                           "back": "/books/6"}, follow_redirects=True)
+    assert "Reserved &#39;Clean Code&#39; for Aarav Sharma" in r.get_data(as_text=True)
+    assert "#3 in line" in client.get("/reservations").get_data(as_text=True)
+
+    fines = client.get("/fines").get_data(as_text=True)
+    loan_id = re.search(r"/loans/(\d+)/pay", fines).group(1)
+    r = client.post(f"/loans/{loan_id}/pay", data={"csrf": token}, follow_redirects=True)
+    assert "marked as paid" in r.get_data(as_text=True)
+
+    r = client.post("/members/2/edit", data={"csrf": token, "name": "Priya V",
+                                            "email": "priya.v@example.com"},
+                    follow_redirects=True)
+    assert "Priya V" in r.get_data(as_text=True)
+
+    for kind in ("books", "members", "loans"):
+        r = client.get(f"/export/{kind}.csv")
+        assert r.status_code == 200 and r.mimetype == "text/csv"
+    assert "Clean Code" in client.get("/export/books.csv").get_data(as_text=True)
+    assert client.get("/export/nope.csv").status_code == 404
+
+
+def test_return_announces_hold(client):
+    login(client)
+    token = csrf(client)
+    html = client.get("/books/6").get_data(as_text=True)
+    loan_id = re.search(r"/loans/(\d+)/return", html).group(1)
+    r = client.post(f"/loans/{loan_id}/return", data={"csrf": token, "back": "/books/6"},
+                    follow_redirects=True)
+    assert "reserved for Meera Iyer" in r.get_data(as_text=True)

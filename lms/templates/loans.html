@@ -1,10 +1,12 @@
 {% extends "base.html" %}
-{% from "_macros.html" import status, date, loan_actions with context %}
+{% from "_macros.html" import status, date, loan_actions, pay_button with context %}
 {% block title %}Loans{% endblock %}
 {% block content %}
 <div class="page-head">
   <div><h1>Loans</h1></div>
-  <a class="btn btn-primary" href="{{ url_for('loan_issue') }}">Issue a book</a>
+  <div class="actions">
+    <a class="btn" href="{{ url_for('export', kind='loans') }}">Export CSV</a>
+    <a class="btn btn-primary" href="{{ url_for('loan_issue') }}">Issue a book</a></div>
 </div>
 <nav class="tabs">
   {% for key, label in [("active", "On loan"), ("overdue", "Overdue"), ("returned", "Returned"), ("all", "All")] %}
@@ -27,7 +29,7 @@
       <td class="date">{{ date(l.issued_on) }}</td><td class="date">{{ date(l.due_on) }}</td><td class="date">{{ date(l.returned_on) }}</td>
       <td class="num">{% if l.fine %}{{ "%.2f"|format(l.fine) }}{% elif l.fine_so_far %}<span class="sub">{{ "%.2f"|format(l.fine_so_far) }} so far</span>{% endif %}</td>
       <td>{{ status(l) }}</td>
-      <td>{{ loan_actions(l, request.full_path) }}</td>
+      <td>{% if l.fine and not l.fine_paid %}{{ pay_button(l, request.full_path) }}{% else %}{{ loan_actions(l, request.full_path) }}{% endif %}</td>
     </tr>
     {% endfor %}
   </table></div>

@@ -59,6 +59,9 @@ class CLI:
             ("Issue a book", self.issue_book),
             ("Return a book", self.return_book),
             ("Renew a loan", self.renew_loan),
+            ("Reserve a book", self.reserve_book),
+            ("Reservations list", self.reservations),
+            ("Pay a fine", self.pay_fine),
             ("Member borrowing history", self.history),
             ("Overdue report", self.overdue),
             ("Library stats", self.stats),
@@ -149,10 +152,29 @@ class CLI:
             _table(self.lib.active_loans(member_id), LOAN_COLS)
         fine = self.lib.return_book(_ask("Loan id", cast=int))
         print("Book returned." + (f" Late fine due: {fine}" if fine else " No fine."))
+        for hold in self.lib.promoted_holds:
+            print(f"Put this copy aside: it's reserved for {hold['member_name']}.")
 
     def renew_loan(self):
         new_due = self.lib.renew_loan(_ask("Loan id", cast=int))
         print(f"Loan renewed. New due date: {new_due}.")
+
+    def reserve_book(self):
+        res_id = self.lib.reserve_book(_ask("Book id", cast=int), _ask("Member id", cast=int))
+        res = self.lib.get_reservation(res_id)
+        print(f"Reserved '{res['title']}' for {res['member_name']}.")
+
+    def reservations(self):
+        _table(self.lib.list_reservations(),
+               [("Res", "id"), ("Book", "title"), ("Member", "member_name"),
+                ("Reserved", "reserved_on"), ("Status", "status"), ("Line #", "position")])
+
+    def pay_fine(self):
+        _table(self.lib.unpaid_fine_loans(),
+               [("Loan", "id"), ("Member", "member_name"), ("Book", "title"),
+                ("Returned", "returned_on"), ("Fine", "fine")])
+        amount = self.lib.pay_fine(_ask("Loan id", cast=int))
+        print(f"Fine of {amount} marked as paid.")
 
     def history(self):
         _table(self.lib.member_history(_ask("Member id", cast=int)), LOAN_COLS)

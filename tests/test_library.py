@@ -17,12 +17,13 @@ def lib():
                   database_url=os.getenv("LMS_TEST_DATABASE_URL"))
     if backend in ("mysql", "postgres"):
         cur = db.conn.cursor()
-        for t in ("loans", "members", "books"):
+        for t in ("reservations", "loans", "members", "books"):
             cur.execute(f"DELETE FROM {t}")
         if backend == "postgres":
-            cur.execute("TRUNCATE loans, members, books RESTART IDENTITY")
+            cur.execute("TRUNCATE reservations, loans, members, books RESTART IDENTITY")
         db.conn.commit()
-    yield Library(db, loan_days=14, max_active_loans=2, fine_per_day=5)
+    yield Library(db, loan_days=14, max_active_loans=2, fine_per_day=5,
+                  max_unpaid_fines=20, max_reservations=2, hold_days=3)
     db.close()
 
 
@@ -73,7 +74,13 @@ def test_late_return_charges_fine(lib, book, member):
     fine = lib.return_book(loan, today=TODAY + timedelta(days=17))
     assert fine == Decimal("15.00")
     assert lib.member_history(member)[0]["fine"] == Decimal("15.00")
+    assert lib.stats()["fines_outstanding"] == Decimal("15.00")
+    assert lib.unpaid_fines(member) == Decimal("15.00")
+    assert lib.pay_fine(loan) == Decimal("15.00")
     assert lib.stats()["fines_collected"] == Decimal("15.00")
+    assert lib.unpaid_fines(member) == 0
+    with pytest.raises(LibraryError, match="already been paid"):
+        lib.pay_fine(loan)
 
 
 def test_cannot_return_twice(lib, book, member):
@@ -161,3 +168,95 @@ def test_popular_books_and_stats(lib, book, member):
     assert lib.popular_books()[0]["times_borrowed"] == 2
     s = lib.stats()
     assert s["titles"] == 1 and s["members"] == 2 and s["on_loan"] == 0
+
+
+def test_unpaid_fines_block_borrowing(lib, book, member):
+    loan = lib.issue_book(book, member, today=TODAY)
+    lib.return_book(loan, today=TODAY + timedelta(days=19))  # 25 owed, limit 20
+    with pytest.raises(LibraryError, match="unpaid fines"):
+        lib.issue_book(book, member, today=TODAY + timedelta(days=20))
+    lib.pay_fine(loan)
+    lib.issue_book(book, member, today=TODAY + timedelta(days=20))
+
+
+def test_update_member(lib, member):
+    other = lib.add_member("Ben", "ben@example.com")
+    lib.update_member(member, "Asha K", "asha.k@example.com", "123")
+    m = lib.get_member(member)
+    assert (m["name"], m["email"], m["phone"]) == ("Asha K", "asha.k@example.com", "123")
+    with pytest.raises(LibraryError, match="already uses"):
+        lib.update_member(other, "Ben", "asha.k@example.com")
+
+
+@pytest.fixture
+def single(lib):
+    return lib.add_book("900", "Only Copy", "A. Writer")
+
+
+def test_reservation_queue_and_hold(lib, single, member):
+    ben = lib.add_member("Ben", "ben@example.com")
+    cy = lib.add_member("Cy", "cy@example.com")
+    with pytest.raises(LibraryError, match="on the shelf"):
+        lib.reserve_book(single, ben, today=TODAY)
+    loan = lib.issue_book(single, member, today=TODAY)
+    lib.reserve_book(single, ben, today=TODAY)
+    lib.reserve_book(single, cy, today=TODAY + timedelta(days=1))
+    with pytest.raises(LibraryError, match="already reserved"):
+        lib.reserve_book(single, ben, today=TODAY)
+    assert [r["position"] for r in lib.book_reservations(single)] == [1, 2]
+    with pytest.raises(LibraryError, match="reserved"):
+        lib.renew_loan(loan, today=TODAY)
+
+    lib.return_book(loan, today=TODAY + timedelta(days=5))
+    assert [h["member_id"] for h in lib.promoted_holds] == [ben]
+    # the copy on the shelf is held for Ben, not Cy or anyone else
+    with pytest.raises(LibraryError, match="held for Ben"):
+        lib.issue_book(single, cy, today=TODAY + timedelta(days=5))
+    lib.issue_book(single, ben, today=TODAY + timedelta(days=6))
+    assert lib.member_reservations(ben) == []
+    assert lib.member_reservations(cy)[0]["position"] == 1
+
+
+def test_hold_expires_and_passes_on(lib, single, member):
+    ben = lib.add_member("Ben", "ben@example.com")
+    cy = lib.add_member("Cy", "cy@example.com")
+    loan = lib.issue_book(single, member, today=TODAY)
+    lib.reserve_book(single, ben, today=TODAY)
+    lib.reserve_book(single, cy, today=TODAY)
+    lib.return_book(loan, today=TODAY + timedelta(days=2))
+    promoted = lib.process_holds(single, today=TODAY + timedelta(days=6))
+    assert [h["member_id"] for h in promoted] == [cy]
+    assert lib.member_reservations(ben) == []
+
+
+def test_cancel_reservation_passes_hold_on(lib, single, member):
+    ben = lib.add_member("Ben", "ben@example.com")
+    cy = lib.add_member("Cy", "cy@example.com")
+    loan = lib.issue_book(single, member, today=TODAY)
+    first = lib.reserve_book(single, ben, today=TODAY)
+    lib.reserve_book(single, cy, today=TODAY)
+    lib.return_book(loan, today=TODAY + timedelta(days=1))
+    lib.cancel_reservation(first, today=TODAY + timedelta(days=1))
+    assert [h["member_id"] for h in lib.promoted_holds] == [cy]
+    with pytest.raises(LibraryError, match="no longer active"):
+        lib.cancel_reservation(first)
+
+
+def test_deactivating_member_cancels_reservations(lib, single, member):
+    ben = lib.add_member("Ben", "ben@example.com")
+    lib.issue_book(single, member, today=TODAY)
+    lib.reserve_book(single, ben, today=TODAY)
+    lib.set_member_active(ben, False)
+    assert lib.book_reservations(single) == []
+
+
+def test_reservation_limit(lib, member):
+    ben = lib.add_member("Ben", "ben@example.com")
+    ids = [lib.add_book(f"r{i}", f"R{i}", "X") for i in range(3)]
+    for b in ids:
+        lib.issue_book(b, ben, today=TODAY) if b != ids[2] else None
+    lib.issue_book(ids[2], lib.add_member("Cy", "cy@example.com"), today=TODAY)
+    lib.reserve_book(ids[0], member, today=TODAY)
+    lib.reserve_book(ids[1], member, today=TODAY)
+    with pytest.raises(LibraryError, match="2 reservations"):
+        lib.reserve_book(ids[2], member, today=TODAY)

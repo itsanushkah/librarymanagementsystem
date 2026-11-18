@@ -26,6 +26,8 @@
       {% if is_librarian %}
       <a href="{{ url_for('members') }}" class="{{ 'active' if ep.startswith('member') }}">Members</a>
       <a href="{{ url_for('loans') }}" class="{{ 'active' if ep in ('loans', 'loan_issue') }}">Loans</a>
+      <a href="{{ url_for('reservations') }}" class="{{ 'active' if ep.startswith('reservation') }}">Reservations</a>
+      <a href="{{ url_for('fines') }}" class="{{ 'active' if ep == 'fines' }}">Fines</a>
       {% endif %}
     </nav>
     <div class="spacer"></div>

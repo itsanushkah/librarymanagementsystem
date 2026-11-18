@@ -5,6 +5,7 @@
   <div class="card card-pad login">
     <h1>Librarian sign in</h1>
     <p class="sub" style="margin:4px 0 20px">Sign in to manage books, members and loans.</p>
+    {% if weak %}<div class="flash flash-error">Sign-in is turned off because the librarian password is missing or too simple. Set <code>LMS_ADMIN_PASSWORD</code> in the server's environment settings.</div>{% endif %}
     <form method="post">
       <input type="hidden" name="csrf" value="{{ csrf_token() }}">
       <div class="field"><label for="username">Username</label>

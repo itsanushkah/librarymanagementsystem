@@ -4,6 +4,7 @@ All SQL in the app is written with ``?`` placeholders; for MySQL they are
 translated to ``%s`` before execution on MySQL and PostgreSQL.
 """
 import sqlite3
+import time
 from contextlib import contextmanager
 
 from . import config
@@ -113,8 +114,42 @@ SCHEMA = {
 }
 
 
+_ID = {"sqlite": "INTEGER PRIMARY KEY AUTOINCREMENT",
+       "postgres": "SERIAL PRIMARY KEY",
+       "mysql": "INT AUTO_INCREMENT PRIMARY KEY"}
+
+# Schema upgrades, applied in order on startup. Version 1 is SCHEMA above.
+# Never edit a released migration; add a new one instead.
+MIGRATIONS = {
+    2: lambda backend: [
+        "ALTER TABLE loans ADD COLUMN fine_paid INTEGER NOT NULL DEFAULT 0",
+        f"""CREATE TABLE reservations (
+            id {_ID[backend]},
+            book_id INTEGER NOT NULL REFERENCES books(id),
+            member_id INTEGER NOT NULL REFERENCES members(id),
+            reserved_on DATE NOT NULL,
+            ready_on DATE NULL,
+            status VARCHAR(20) NOT NULL DEFAULT 'waiting'
+        )""",
+        "CREATE INDEX idx_reservations_book ON reservations(book_id, status)",
+    ],
+}
+LATEST_VERSION = max(MIGRATIONS)
+
+
 class IntegrityError(Exception):
     """Raised for unique/foreign key violations on either backend."""
+
+
+def _retry(connect, attempts=5, delay=2.0):
+    """Hosted databases can take a few seconds to wake up; retry briefly."""
+    for attempt in range(1, attempts + 1):
+        try:
+            return connect()
+        except Exception:
+            if attempt == attempts:
+                raise
+            time.sleep(delay * attempt)
 
 
 class Database:
@@ -131,8 +166,9 @@ class Database:
             except ImportError as exc:  # pragma: no cover
                 raise RuntimeError("psycopg is not installed. "
                                    "Run: pip install -r requirements.txt") from exc
-            self.conn = psycopg.connect(database_url or config.DATABASE_URL,
-                                        row_factory=dict_row)
+            self.conn = _retry(lambda: psycopg.connect(
+                database_url or config.DATABASE_URL, row_factory=dict_row,
+                connect_timeout=10))
             self._integrity_errors = (psycopg.IntegrityError,)
         elif self.backend == "sqlite":
             self.conn = sqlite3.connect(sqlite_path or config.SQLITE_PATH)
@@ -149,7 +185,7 @@ class Database:
                 ) from exc
             settings = dict(mysql_settings or config.MYSQL)
             database = settings.pop("database")
-            server = mysql.connector.connect(**settings)
+            server = _retry(lambda: mysql.connector.connect(**settings))
             cur = server.cursor()
             cur.execute(f"CREATE DATABASE IF NOT EXISTS `{database}`")
             cur.close()
@@ -172,11 +208,33 @@ class Database:
         return self.conn.cursor()
 
     def init_schema(self):
+        """Create the base tables, then apply any pending migrations."""
         cur = self.conn.cursor()
         for statement in SCHEMA[self.backend]:
             cur.execute(statement)
+        cur.execute("CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)")
+        cur.execute("SELECT MAX(version) FROM schema_version")
+        row = cur.fetchone()
+        current = (row[0] if not isinstance(row, dict) else list(row.values())[0]) or 1
         self.conn.commit()
+        for version in sorted(v for v in MIGRATIONS if v > current):
+            try:
+                for statement in MIGRATIONS[version](self.backend):
+                    cur.execute(statement)
+                cur.execute(self._sql("INSERT INTO schema_version (version) VALUES (?)"),
+                            (version,))
+                self.conn.commit()
+            except Exception:
+                self.conn.rollback()
+                # Another process may have just applied it; re-check before failing.
+                cur.execute("SELECT MAX(version) FROM schema_version")
+                row = cur.fetchone()
+                done = row[0] if not isinstance(row, dict) else list(row.values())[0]
+                self.conn.commit()
+                if not done or done < version:
+                    raise
         cur.close()
+        self.schema_version = LATEST_VERSION
 
     def query(self, sql, params=()):
         cur = self._cursor()

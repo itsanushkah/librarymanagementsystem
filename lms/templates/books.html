@@ -3,8 +3,10 @@
 {% block title %}Catalogue{% endblock %}
 {% block content %}
 <div class="page-head">
-  <div><h1>Catalogue</h1><p>{{ books|length }} title{{ "" if books|length == 1 else "s" }}{% if q or genre or available %} matching your search{% endif %}</p></div>
-  {% if is_librarian %}<a class="btn btn-primary" href="{{ url_for('book_new') }}">Add book</a>{% endif %}
+  <div><h1>Catalogue</h1><p>{{ total }} title{{ "" if total == 1 else "s" }}{% if q or genre or available %} matching your search{% endif %}</p></div>
+  {% if is_librarian %}<div class="actions">
+    <a class="btn" href="{{ url_for('export', kind='books') }}">Export CSV</a>
+    <a class="btn btn-primary" href="{{ url_for('book_new') }}">Add book</a></div>{% endif %}
 </div>
 <form class="toolbar" method="get">
   <input type="search" name="q" value="{{ q }}" placeholder="Search by title, author, genre or ISBN" aria-label="Search">
@@ -25,11 +27,20 @@
       <div class="title">{{ b.title }}</div>
       <div class="author">{{ b.author }}</div>
     </div>
-    {% if b.available_copies > 0 %}<span class="badge badge-ok" style="align-self:flex-start">{{ b.available_copies }} available</span>
+    {% if b.available_copies - b.held > 0 %}<span class="badge badge-ok" style="align-self:flex-start">{{ b.available_copies - b.held }} available</span>
+    {% elif b.available_copies > 0 %}<span class="badge badge-warn" style="align-self:flex-start">On hold</span>
     {% else %}<span class="badge badge-danger" style="align-self:flex-start">On loan</span>{% endif %}
   </a>
   {% endfor %}
 </div>
+{% if pages > 1 %}
+<nav class="pager" aria-label="Pages">
+  {% set args = {"q": q or None, "genre": genre or None, "available": "1" if available else None} %}
+  {% if page > 1 %}<a class="btn" href="{{ url_for('books', page=page - 1, **args) }}">← Previous</a>{% endif %}
+  <span class="sub">Page {{ page }} of {{ pages }}</span>
+  {% if page < pages %}<a class="btn" href="{{ url_for('books', page=page + 1, **args) }}">Next →</a>{% endif %}
+</nav>
+{% endif %}
 {% else %}
 <div class="card empty">No books found.{% if is_librarian %} <a href="{{ url_for('book_new') }}">Add one</a>.{% endif %}</div>
 {% endif %}

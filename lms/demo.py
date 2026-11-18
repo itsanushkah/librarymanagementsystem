@@ -40,7 +40,10 @@ LOANS = [
     (11, 0, 60, 50),
     (9, 1, 70, 58),
     (5, 2, 25, None),   # overdue
+    (12, 4, 50, 33),    # returned late, fine paid below
 ]
+# (book index, member index): waiting list for books with every copy out
+RESERVATIONS = [(5, 3), (5, 1)]
 
 
 def seed_demo_data(lib: Library, today=None):
@@ -58,6 +61,14 @@ def seed_demo_data(lib: Library, today=None):
                                   today=today - timedelta(days=issued_ago))
             if returned_ago is not None:
                 lib.return_book(loan, today=today - timedelta(days=returned_ago))
+        except LibraryError:
+            pass
+    for loan in lib.db.query("SELECT id FROM loans WHERE fine > 0 AND member_id = ?",
+                             (member_ids[4],)):
+        lib.pay_fine(loan["id"])
+    for book_i, member_i in RESERVATIONS:
+        try:
+            lib.reserve_book(book_ids[book_i], member_ids[member_i], today=today)
         except LibraryError:
             pass
     return True

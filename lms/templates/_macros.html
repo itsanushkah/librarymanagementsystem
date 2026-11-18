@@ -15,8 +15,11 @@
 {%- endmacro %}
 
 {% macro availability(book) -%}
-{%- if book.available_copies > 0 -%}
-<span class="badge badge-ok">{{ book.available_copies }} of {{ book.total_copies }} available</span>
+{%- set shelf = book.available_copies - (book.held or 0) -%}
+{%- if shelf > 0 -%}
+<span class="badge badge-ok">{{ shelf }} of {{ book.total_copies }} available</span>
+{%- if book.held %} <span class="badge badge-warn">{{ book.held }} on hold</span>{% endif -%}
+{%- elif book.available_copies > 0 -%}<span class="badge badge-warn">On hold for a reservation</span>
 {%- else -%}<span class="badge badge-danger">All {{ book.total_copies }} on loan</span>{%- endif -%}
 {%- endmacro %}
 
@@ -35,6 +38,20 @@
   {%- endif %}
 </div>
 {%- endif -%}
+{%- endmacro %}
+
+{% macro cancel_hold(h, back) -%}
+<form method="post" action="{{ url_for('reservation_cancel', reservation_id=h.id) }}" class="inline">
+  <input type="hidden" name="csrf" value="{{ csrf_token() }}"><input type="hidden" name="back" value="{{ back }}">
+  <button class="btn btn-sm btn-danger">Cancel</button>
+</form>
+{%- endmacro %}
+
+{% macro pay_button(loan, back) -%}
+<form method="post" action="{{ url_for('loan_pay', loan_id=loan.id) }}" class="inline">
+  <input type="hidden" name="csrf" value="{{ csrf_token() }}"><input type="hidden" name="back" value="{{ back }}">
+  <button class="btn btn-sm">Mark paid</button>
+</form>
 {%- endmacro %}
 
 {% macro date(d) %}{{ d.strftime("%d %b %Y") if d else "" }}{% endmacro %}

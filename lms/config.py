@@ -37,9 +37,20 @@ SQLITE_PATH = os.getenv("LMS_SQLITE_PATH", "library.db")
 LOAN_DAYS = int(os.getenv("LMS_LOAN_DAYS", "14"))
 MAX_ACTIVE_LOANS = int(os.getenv("LMS_MAX_ACTIVE_LOANS", "3"))
 FINE_PER_DAY = float(os.getenv("LMS_FINE_PER_DAY", "5"))
+# Members owing more than this in unpaid fines can't borrow.
+MAX_UNPAID_FINES = float(os.getenv("LMS_MAX_UNPAID_FINES", "50"))
+MAX_RESERVATIONS = int(os.getenv("LMS_MAX_RESERVATIONS", "3"))
+# Days a returned copy is held for the member who reserved it.
+HOLD_DAYS = int(os.getenv("LMS_HOLD_DAYS", "3"))
 
 # Web app
-SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-change-me")
+# Render sets RENDER=true; LMS_ENV=production does the same anywhere else.
+IS_PRODUCTION = bool(os.getenv("RENDER")) or os.getenv("LMS_ENV") == "production"
+SECRET_KEY = os.getenv("SECRET_KEY", "")
 ADMIN_USERNAME = os.getenv("LMS_ADMIN_USERNAME", "admin")
 ADMIN_PASSWORD = os.getenv("LMS_ADMIN_PASSWORD", "admin")
+# Sign-in is locked for a while after this many wrong passwords.
+LOGIN_MAX_ATTEMPTS = int(os.getenv("LMS_LOGIN_MAX_ATTEMPTS", "5"))
+LOGIN_LOCK_MINUTES = int(os.getenv("LMS_LOGIN_LOCK_MINUTES", "10"))
+PAGE_SIZE = int(os.getenv("LMS_PAGE_SIZE", "24"))
 SEED_DEMO_DATA = os.getenv("LMS_SEED_DEMO_DATA", "0") == "1"

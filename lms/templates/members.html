@@ -3,7 +3,9 @@
 {% block content %}
 <div class="page-head">
   <div><h1>Members</h1><p>{{ members|length }} member{{ "" if members|length == 1 else "s" }}</p></div>
-  <a class="btn btn-primary" href="{{ url_for('member_new') }}">Register member</a>
+  <div class="actions">
+    <a class="btn" href="{{ url_for('export', kind='members') }}">Export CSV</a>
+    <a class="btn btn-primary" href="{{ url_for('member_new') }}">Register member</a></div>
 </div>
 <form class="toolbar" method="get">
   <input type="search" name="q" value="{{ q }}" placeholder="Search by name or email" aria-label="Search">

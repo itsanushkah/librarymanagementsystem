@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% from "_macros.html" import date, cancel_hold with context %}
+{% block title %}Reservations{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Reservations</h1><p>When all copies of a book are out, members can join a waiting list. The next copy returned is held for the first person in line.</p></div>
+</div>
+<section class="card">
+  {% if reservations %}
+  <div class="table-wrap"><table>
+    <tr><th>Book</th><th>Member</th><th>Reserved</th><th>Status</th><th></th></tr>
+    {% for r in reservations %}
+    <tr>
+      <td><a href="{{ url_for('book_detail', book_id=r.book_id) }}">{{ r.title }}</a><div class="sub">{{ r.author }}</div></td>
+      <td><a href="{{ url_for('member_detail', member_id=r.member_id) }}">{{ r.member_name }}</a><div class="sub">{{ r.email }}</div></td>
+      <td class="date">{{ date(r.reserved_on) }}</td>
+      <td>{% if r.status == "ready" %}<span class="badge badge-warn">Ready for pickup</span><div class="sub">Held until {{ date(r.hold_until) }}</div>
+          {% else %}<span class="badge badge-muted">#{{ r.position }} in line</span>{% endif %}</td>
+      <td><div class="actions">
+        {% if r.status == "ready" %}
+        <form method="post" action="{{ url_for('loan_issue') }}" class="inline">
+          <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+          <input type="hidden" name="book_id" value="{{ r.book_id }}"><input type="hidden" name="member_id" value="{{ r.member_id }}">
+          <input type="hidden" name="back" value="{{ url_for('reservations') }}">
+          <button class="btn btn-sm btn-primary">Issue now</button>
+        </form>{% endif %}
+        {{ cancel_hold(r, url_for('reservations')) }}</div></td>
+    </tr>
+    {% endfor %}
+  </table></div>
+  {% else %}<div class="empty">No reservations. To add one, open a book whose copies are all on loan.</div>{% endif %}
+</section>
+{% endblock %}
